@@ -1,4 +1,16 @@
-# This is a hierarchical representation of the GTK application's UI components
+# This is a program for creating, editing and running electronic circuits
+
+## How to compile
+
+```console
+cd ~/
+mkdir DDRD_circuit
+cd DDRD_circuit
+git clone https://github.com/MatveyDDRD/DDRD-circuit.git
+./install.sh
+``` 
+
+### This is a hierarchical representation of the GTK application's UI components
 
     GtkApplicationWindow (window)
     └── GtkBox (main_vertical_box, vertical)
@@ -14,7 +26,7 @@
         │   └── GtkFrame (workspace_frame)
 
 
-# This is a hierarchical representation of the... of the... hm... idk
+### This is a hierarchical representation of the... of the... hm... idk
 
     Main Window
     ├── Menu
