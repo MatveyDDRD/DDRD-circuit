@@ -1,0 +1,7 @@
+/* styles.css */
+stack switcher button {
+    min-width: 50px; /* Минимальная ширина кнопки */
+    min-height: 30px; /* Минимальная высота кнопки */
+    padding: 5px;    /* Внутренние отступы */
+    font-size: 12px;  /* Размер шрифта */
+}
