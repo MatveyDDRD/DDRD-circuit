@@ -1,6 +1,7 @@
 FLAGS = -Wpointer-integer-compare $(shell pkg-config --cflags gtk4)
 LIBS = $(shell pkg-config --libs gtk4)
-CC = gcc
+# CC = gcc
+СС = llvm-gcc
 
 EXCLUDE_FILES :=
 
@@ -15,7 +16,7 @@ all: install
 install: DDRD-circuit
 
 DDRD-circuit: $(OBJS)
-	$(CC) $(FLAGS) -o $@ $^ $(LIBS)
+	$(CC) -O3 $(FLAGS) -o $@ $^ $(LIBS)
 
 # Правило для компиляции любого исходного файла в объектный файл
 build/obj/%.o: src/%.c src/*.h | build/obj

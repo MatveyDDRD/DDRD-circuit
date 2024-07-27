@@ -22,11 +22,11 @@
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
-#define CHECK_NULL(var) do {                                                  \
-    if ((var) == NULL) {                                                      \
-        printf("\033[1m\033[31mPANIC! %s IS NULL!\033[0m\n", TOSTRING(var));  \
-        exit(-1);                                                             \
-    }                                                                         \
+#define CHECK_NULL(var) do {                                                                          \
+    if ((var) == NULL) {                                                                              \
+        printf("\033[1m\033[31mPANIC! %s IS NULL! in function %s\033[0m\n", TOSTRING(var), __func__); \
+        exit(-1);                                                                                     \
+    }                                                                                                 \
 } while (0)
 // ***
 

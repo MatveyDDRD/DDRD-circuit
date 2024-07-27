@@ -1,8 +1,15 @@
-#include <gtk/gtk.h>
 #include <time.h>
-#include "DDRD_types.h"
 #include "drawing.h"
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdbool.h>
+
+#include <gtk/gtk.h>
+
+#include "DDRD_types.h"
 #include "electronics.h"
+
+#define DEBUG_MODE 0
 
 // App
 GtkWidget *window;
@@ -42,6 +49,12 @@ GMenuItem *menu_item_open_file;
 // Cairo
 GtkWidget *workspace_area;
 
+DDRD_circuit* circuit_global;
+
+// circuit
+
+
+
 //***** PRINT ****//
 
 // Получить строку кода ANSI по перечислению
@@ -60,43 +73,65 @@ const char *get_color_code(ANSI_COLOR color) {
 }
 
 
-int DDRD_print(const char *format, ANSI_COLOR color, int level, bool bold, ...) {
+#if DEBUG_MODE
+
+extern inline void DDRD_print(const char *format, int level, ANSI_COLOR color, int bold, ...) {
+
     va_list args;
     va_start(args, bold);
 
+    // skip first arg, because without it, function also prints bold arg value
+    // va_arg(args, int);
+
     // Установить цвет и стиль текста
     const char *color_code = get_color_code(color);
-    const char *bold_code = bold ? "\033[1m" : "\033[22m"; // \033[22m сбрасывает жирный шрифт
-
+    const char *bold_code = bold ? "\033[1m" : "\033[22m";
     if (color_code == NULL || bold_code == NULL) {
-        // Если color_code или bold_code равен NULL, завершаем функцию
         va_end(args);
-        return -1;
+        printf("DDRD_print error");
+        return;
     }
 
     // Вывести табуляции в зависимости от уровня
     for (int i = 0; i < level; i++) {
-        printf("\t");
+        printf("|    ");
     }
 
     // Установить цвет и стиль текста
     printf("%s%s", bold_code, color_code);
 
-    // Вывести основной текст
-    int result = vprintf(format, args);
+    // Создаем буфер для форматированной строки
+    char buffer[1024];  // Предполагаем, что 1024 байт достаточно. Измените при необходимости.
+
+    // Форматируем строку в буфер
+    int result = vsnprintf(buffer, sizeof(buffer), format, args);
+
+    // Выводим отформатированную строку
+    if (result >= 0) {
+        printf("%s", buffer);
+    }
 
     // Сбросить форматирование
     printf("\033[0m\n");
 
     va_end(args);
-    return result;
+    return;
 }
+
+#else
+
+extern inline void DDRD_print(const char *format, int level, ANSI_COLOR color, int bold, ...) {
+    // Do nothing
+}
+
+#endif
+
 
 //***** END PRINT *****//
 
 // *** Functions definitions ***
 
-void new_file_action_callback(GSimpleAction *action, GVariant *parameter, gpointer user_data) {
+void new_file_action_callback(GSimpleAction *action, GVariant *parameter, gpointer user_draw_parts_data) {
     printf("Hi\n");
 }
 
@@ -142,23 +177,27 @@ static void list_directory() {
 // *** File list ***
 
 // Callbacks for setting up, binding, unbinding, and tearing down list items
-static void setup_list_item_cb(GtkSignalListItemFactory *self, GtkListItem *listitem, gpointer user_data) {
+static void setup_list_item_cb(GtkSignalListItemFactory *self, GtkListItem *listitem, gpointer user_draw_parts_data){
     GtkWidget *label = gtk_label_new(NULL);
     gtk_list_item_set_child(listitem, label);
     // No need to unref label due to sunk reference
 }
 
-static void bind_list_item_cb(GtkSignalListItemFactory *self, GtkListItem *listitem, gpointer user_data) {
+static void bind_list_item_cb(GtkSignalListItemFactory *self, GtkListItem *listitem, gpointer user_draw_parts_data) {
     GtkWidget *label = gtk_list_item_get_child(listitem);
     GtkStringObject *str_obj = gtk_list_item_get_item(listitem);
     gtk_label_set_text(GTK_LABEL(label), gtk_string_object_get_string(str_obj));
 }
 
-static void unbind_list_item_cb(GtkSignalListItemFactory *self, GtkListItem *listitem, gpointer user_data) {
+static void unbind_list_item_cb(GtkSignalListItemFactory *self, 
+                                GtkListItem *listitem, 
+                                gpointer user_draw_parts_data) {
     // Nothing to do here 
 }
 
-static void teardown_list_item_cb(GtkSignalListItemFactory *self, GtkListItem *listitem, gpointer user_data) {
+static void teardown_list_item_cb(GtkSignalListItemFactory *self, 
+                                  GtkListItem *listitem, 
+                                  gpointer user_draw_parts_data) {
     // Nothing to do here, GtkListItem will be destroyed
 }
 
@@ -166,7 +205,7 @@ static void teardown_list_item_cb(GtkSignalListItemFactory *self, GtkListItem *l
 void make_file_tree() {
     list_directory();
 
-    char **names_array = (char **)malloc(sizeof(char *) * (file_count_in_current_directory + 1)); // +1 для NULL 
+    char **names_array = (char **)malloc(sizeof(char *) * (file_count_in_current_directory + 1)); 
 
     for (int i = 0; i < file_count_in_current_directory; ++i) {
         names_array[i] = file_info_array[i].name;
@@ -186,7 +225,9 @@ void make_file_tree() {
     file_list_widget = gtk_list_view_new(GTK_SELECTION_MODEL(file_list_no_selection), factory);
 }
 
-void activate(GtkApplication *app, gpointer user_data) {
+
+// *** Application activation function **
+void activate(GtkApplication *app, gpointer user_draw_parts_data) {
     printf("Activating application...\n");
 
     // *** Main window ***
@@ -195,6 +236,84 @@ void activate(GtkApplication *app, gpointer user_data) {
     gtk_window_set_default_size(GTK_WINDOW(window), 800, 400);
 
     GtkWidget *main_vertical_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+
+
+
+    // *** Menu Bar ***
+
+    // menu_bar
+    // │
+    // ├── File
+    // │   ├── New File
+    // │   └── Open File
+    // │
+    // └── Network
+    //     └── Server
+    //         ├── Connect
+    //         └── Disconnect
+
+    // Создаем главное меню
+    GMenu *menu_bar = g_menu_new();
+
+    // Создаем подменю "File"
+    GMenu *file_menu = g_menu_new();
+    g_menu_append_submenu(menu_bar, "File", G_MENU_MODEL(file_menu));
+
+    // Создаем подменю "Network"
+    GMenu *network_menu = g_menu_new();
+    g_menu_append_submenu(menu_bar, "Network", G_MENU_MODEL(network_menu));
+
+    // Создаем подменю "Server" внутри подменю "Network"
+    GMenu *server_menu = g_menu_new();
+    g_menu_append_submenu(network_menu, "Server", G_MENU_MODEL(server_menu));
+
+
+    // Создаем действия "Connect" и "Disconnect"
+    GSimpleAction *act_connect = g_simple_action_new("connect", NULL);
+    GSimpleAction *act_disconnect = g_simple_action_new("disconnect", NULL);
+
+    // Добавляем действия в карту действий приложения
+    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(act_connect));
+    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(act_disconnect));
+
+    // Подключаем сигналы активации к действиям
+    g_signal_connect(act_connect, "activate", G_CALLBACK(new_file_action_callback), NULL);
+    g_signal_connect(act_disconnect, "activate", G_CALLBACK(new_file_action_callback), NULL);
+
+    // Создаем пункт меню "Connect" и добавляем его в подменю "Server"
+    GMenuItem *menu_item_connect = g_menu_item_new("Connect", "app.connect");
+    g_menu_append_item(server_menu, menu_item_connect);
+
+    // Создаем пункт меню "Disconnect" и добавляем его в подменю "Server"
+    GMenuItem *menu_item_disconnect = g_menu_item_new("Disconnect", "app.disconnect");
+    g_menu_append_item(server_menu, menu_item_disconnect);
+
+    // Создаем действия "New File" и "Open File"
+    GSimpleAction *act_new_file = g_simple_action_new("newfile", NULL);
+    GSimpleAction *act_open_file = g_simple_action_new("openfile", NULL);
+
+    // Добавляем действия в карту действий приложения
+    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(act_new_file));
+    g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(act_open_file));
+
+    // Подключаем сигналы активации к действиям
+    g_signal_connect(act_new_file, "activate", G_CALLBACK(new_file_action_callback), NULL);
+    g_signal_connect(act_open_file, "activate", G_CALLBACK(new_file_action_callback), NULL);
+
+    // Создаем пункт меню "New File" и добавляем его в подменю "File"
+    GMenuItem *menu_item_new_file = g_menu_item_new("New File", "app.newfile");
+    g_menu_append_item(file_menu, menu_item_new_file);
+
+    // Создаем пункт меню "Open File" и добавляем его в подменю "File"
+    GMenuItem *menu_item_open_file = g_menu_item_new("Open File", "app.openfile");
+    g_menu_append_item(file_menu, menu_item_open_file);
+
+    // Устанавливаем главное меню для приложения и показываем его
+    gtk_application_set_menubar(GTK_APPLICATION(app), G_MENU_MODEL(menu_bar));
+    gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(window), TRUE);
+
+
 
     // *** Paned ***
     GtkWidget *workspace_paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
@@ -214,13 +333,15 @@ void activate(GtkApplication *app, gpointer user_data) {
     gtk_paned_set_shrink_end_child(GTK_PANED(workspace_paned), FALSE);
     gtk_widget_set_size_request(workspace_frame, 50, -1);
 
+
+
     // *** Sidebar stack container ***
     GtkWidget *sidebar_stack_container = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     GtkWidget *sidebar_stack_switcher = gtk_stack_switcher_new();
     gtk_widget_set_halign(sidebar_stack_switcher, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(sidebar_stack_switcher, GTK_ALIGN_START);
     GtkWidget *sidebar_stack = gtk_stack_new();
-    gtk_orientable_set_orientation(sidebar_stack_switcher, GTK_ORIENTATION_VERTICAL);
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(sidebar_stack_switcher), GTK_ORIENTATION_VERTICAL);
 
     gtk_stack_switcher_set_stack(GTK_STACK_SWITCHER(sidebar_stack_switcher), GTK_STACK(sidebar_stack));
     gtk_widget_set_vexpand(sidebar_stack, TRUE);
@@ -229,6 +350,8 @@ void activate(GtkApplication *app, gpointer user_data) {
     gtk_box_append(GTK_BOX(sidebar_stack_container), sidebar_stack);
 
     gtk_frame_set_child(GTK_FRAME(sidebar_frame), sidebar_stack_container);
+
+
 
     // *** File list container ***
     GtkWidget *file_list_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
@@ -239,7 +362,9 @@ void activate(GtkApplication *app, gpointer user_data) {
 
     // Создание scrolled window и добавление в него file_list_widget
     GtkWidget *file_list_scrolled = gtk_scrolled_window_new();
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(file_list_scrolled), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(file_list_scrolled), 
+                                                       GTK_POLICY_AUTOMATIC, 
+                                                       GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(file_list_scrolled), file_list_widget);
     gtk_widget_set_vexpand(file_list_scrolled, TRUE);
     gtk_widget_set_hexpand(file_list_scrolled, TRUE);
@@ -247,6 +372,8 @@ void activate(GtkApplication *app, gpointer user_data) {
 
     // Добавление контейнера с file_list в stack
     gtk_stack_add_titled(GTK_STACK(sidebar_stack), file_list_container, "file_list", "Files");
+
+
 
     // *** Elements container ***
     GtkWidget *elements_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
@@ -256,32 +383,80 @@ void activate(GtkApplication *app, gpointer user_data) {
     // Добавление контейнера с elements в stack
     gtk_stack_add_titled(GTK_STACK(sidebar_stack), elements_container, "elements", "Elements");
 
+
+
     // *** Canvas drawing ***
-    gpointer drawing_data = malloc(sizeof(draw_data));
+
+    gpointer draw_parts_data_for_drawing;
 
     GtkWidget *workspace_area = gtk_drawing_area_new();
     gtk_drawing_area_set_content_width(GTK_DRAWING_AREA(workspace_area), 500);
     gtk_drawing_area_set_content_height(GTK_DRAWING_AREA(workspace_area), 500);
-    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(workspace_area), draw_function, drawing_data, NULL);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(workspace_area), 
+                                   draw_function, 
+                                   draw_parts_data_for_drawing, 
+                                   NULL);
 
     gtk_widget_set_vexpand(workspace_area, TRUE);
     gtk_widget_set_hexpand(workspace_area, TRUE);
     gtk_frame_set_child(GTK_FRAME(workspace_frame), workspace_area);
 
+
+    // // *** Circuit init ***
+    // DDRD_circuit* circuit = DDRD_circuit_new(workspace_area);
+
+    // circuit_global = circuit;
+
+    // DDRD_pos pos1 = { 38, 42 };
+    // DDRD_pos pos2 = { 568, 200 };
+    // DDRD_resistor_new(circuit, 220, pos1);
+    // DDRD_resistor_new(circuit, 230, pos2);
+    // 
+    // *** Circuit init ***
+    DDRD_circuit* circuit = DDRD_circuit_new(workspace_area);
+
+    circuit_global = circuit;
+
+    // Добавляем больше резисторов с различными номиналами и позициями
+    DDRD_pos pos1 = { 932, 0 };
+    DDRD_pos pos2 = { 35, 35 };
+    DDRD_pos pos3 = { 843, 60 };
+    DDRD_pos pos4 = { 90, 90 };
+    DDRD_pos pos5 = { 120, 354 };
+    DDRD_pos pos6 = { 45, 150 };
+    DDRD_pos pos7 = { 180, 180 };
+    DDRD_pos pos8 = { 210, 235 };
+    DDRD_pos pos9 = { 455, 240 };
+
+    DDRD_resistor_new(circuit, 220, pos1); 
+    DDRD_resistor_new(circuit, 230, pos2);
+    DDRD_resistor_new(circuit, 100, pos3);
+    DDRD_resistor_new(circuit, 470, pos4);
+    DDRD_resistor_new(circuit, 134, pos5); 
+    DDRD_resistor_new(circuit, 330, pos6);
+    DDRD_resistor_new(circuit, 270, pos7);
+    DDRD_resistor_new(circuit, 150, pos8);
+    DDRD_resistor_new(circuit, 680, pos9);
+
+    // *** Gestures ***
+    GtkGesture *click_gesture;
+    GtkGesture *drag_gesture;
+
+    // press
+    click_gesture = gtk_gesture_click_new ();
+    gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click_gesture), GDK_BUTTON_PRIMARY);
+    g_signal_connect (click_gesture, "pressed", G_CALLBACK (workspace_press), NULL);
+    g_signal_connect (click_gesture, "released", G_CALLBACK (workspace_release), NULL);
+    gtk_widget_add_controller (workspace_area, GTK_EVENT_CONTROLLER (click_gesture));
+
+    // drag
+    drag_gesture = gtk_gesture_drag_new ();
+    g_signal_connect (drag_gesture, "drag-update", G_CALLBACK (on_drag_update), NULL);
+    gtk_widget_add_controller (workspace_area, GTK_EVENT_CONTROLLER (drag_gesture));
+
     // Show all
     gtk_window_set_child(GTK_WINDOW(window), main_vertical_box);
     gtk_window_present(GTK_WINDOW(window));
-
-    // Применение стилей
-    GtkCssProvider *css_provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_path(css_provider, "styles.css");
-    gtk_style_context_add_provider_for_display(gdk_display_get_default(),
-                                               GTK_STYLE_PROVIDER(css_provider),
-                                               GTK_STYLE_PROVIDER_PRIORITY_USER);
-
-    DDRD_circuit *circuit = DDRD_circuit_new(workspace_area);
-    DDRD_pos pos = {200, 200};
-    DDRD_resistor_new(&circuit, 220.0, pos);
 }
 
 
