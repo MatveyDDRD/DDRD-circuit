@@ -438,6 +438,7 @@ void activate(GtkApplication *app, gpointer user_draw_parts_data) {
     DDRD_resistor_new(circuit, 150, pos8);
     DDRD_resistor_new(circuit, 680, pos9);
 
+
     // *** Gestures ***
     GtkGesture *click_gesture;
     GtkGesture *drag_gesture;

@@ -29,6 +29,13 @@ int precise_delay_ms(unsigned long milliseconds) {
     return ret;
 }
 
+typedef struct{
+    int x;
+    int y;
+    int width;
+    int height;
+}DDRD_rectangle;
+
 
 /**
  * structure that have all info for drawing
@@ -37,7 +44,6 @@ int precise_delay_ms(unsigned long milliseconds) {
 typedef struct {
     DDRD_pos view_position;
 
-    DDRD_color stroke_color;
     DDRD_color fill_color;
     int stroke_width;
 
@@ -49,11 +55,17 @@ typedef struct {
     int *points_num; // how many points in each part
     // first dimention - parts, second dimention - points
     DDRD_pos **points;
+    DDRD_color *stroke_points_color; // only for parts
 
     // circles
     DDRD_pos* circles_positions;
     int *circles_radiuses;
     int num_circles;
+
+    // rectangles
+    DDRD_rectangle *rectangles;
+    DDRD_color *rectangles_colors;
+    int rectangles_num;
 
 } draw_data;
 
@@ -65,6 +77,8 @@ typedef struct {
  */
 static struct {
     bool isClicked;
+    bool wasDragged;
+
     double x_start_click;
     double y_start_click;
 
@@ -81,9 +95,12 @@ static struct {
     int last_drag_y;
 } mouse_data;
 
+
+
 // *** Mouse press callback ***
 gboolean workspace_press(GtkGesture *gesture, int n_press, double x, double y, gpointer user_data) {
     DDRD_circuit* circuit = circuit_global;
+    mouse_data.wasDragged = false;
     mouse_data.isClicked = true;
     mouse_data.x_start_click = x;
     mouse_data.y_start_click = y;
@@ -101,17 +118,78 @@ void on_drag_update(GtkGestureDrag *gesture, double offset_x, double offset_y, g
     circuit->view_position.x = mouse_data.current_view_x + (int)offset_x;
     circuit->view_position.y = mouse_data.current_view_y + (int)offset_y;
 
-    
+    mouse_data.wasDragged = true;
+
     DDRD_print("New view position: x=%d, y=%d\n", WHITE, 0, circuit->view_position.x, circuit->view_position.y);
     gtk_widget_queue_draw(circuit->drawing_area);
 }
 
-// *** Mouse release callback ***
-void workspace_release(GtkGesture *gesture, int n_press, double x, double y, gpointer user_data) {
-    mouse_data.isClicked = false;
-
-    DDRD_print("Release at x: %f, y: %f\n", 0, WHITE, x, y);
+void elementUnselect(DDRD_element *element, DDRD_circuit circuit)
+{
+    element->isSelected = false;
+    element->shape.color = (DDRD_color){0, 0, 0};
 }
+
+void elementToggleSelect(DDRD_element *element, DDRD_circuit circuit)
+{
+    if (element->isSelected)
+    {
+        elementUnselect(element, circuit);
+    }else{
+        element->isSelected = true;
+        element->shape.color = (DDRD_color){6, 112, 252};
+    }
+}
+
+
+void workspace_release(GtkGesture *gesture, int n_press, double x, double y, gpointer user_data) {
+    DDRD_print("Release at x: %f, y: %f\n", 0, WHITE, x, y);
+    mouse_data.isClicked = false;
+    DDRD_circuit *circuit = circuit_global;
+    if(mouse_data.wasDragged){ return; }
+
+    for (int i = 0; i < circuit->max_id; ++i)
+    {
+        DDRD_pos click_area[2];
+        click_area[0].x = circuit->elements[i]->shape.click_area[0].x + 
+        circuit->view_position.x + 
+        circuit->elements[i]->position.x;
+
+        click_area[0].y = circuit->elements[i]->shape.click_area[0].y + 
+        circuit->view_position.y + 
+        circuit->elements[i]->position.y;
+
+        click_area[1].x = circuit->elements[i]->shape.click_area[1].x + 
+        circuit->view_position.x + 
+        circuit->elements[i]->position.x;
+
+        click_area[1].y = circuit->elements[i]->shape.click_area[1].y + 
+        circuit->view_position.y + 
+        circuit->elements[i]->position.y;
+        if (x >= click_area[0].x && x <= click_area[1].x &&
+        y >= click_area[0].y && y <= click_area[1].y)
+        {
+            printf("AAAA %d\n", circuit->elements[i]->id);
+            elementToggleSelect(circuit->elements[i], *circuit);
+
+            for (int ii = 0; ii < circuit->max_id; ++ii)
+            {
+                if (ii != i)
+                {
+                    elementUnselect(circuit->elements[ii], *circuit);
+                }
+            }
+            break;
+        }else{
+            for (int ii = 0; ii < circuit->max_id; ++ii)
+            {
+                elementUnselect(circuit->elements[ii], *circuit);
+            }
+        }
+    }
+    gtk_widget_queue_draw(circuit->drawing_area);
+}
+
 
 inline extern DDRD_pos posToGrid(DDRD_pos pos, int view_zoom)
 {
@@ -227,9 +305,11 @@ inline static void elementprocess(DDRD_shape shape, draw_data *data, DDRD_circui
         DDRD_print("allocating memory for %d elements", 3, WHITE, shape.parts_body_number);
         DDRD_print("points_num", 4, WHITE, false);
         data->points_num = (int*)malloc( sizeof(int) *  shape.parts_body_number);
-        ALLOC_CHECK(data->points_num);
-
         data->points = (DDRD_pos**)malloc( sizeof(DDRD_pos) * shape.parts_body_number);
+        ALLOC_CHECK(data->points_num);
+        ALLOC_CHECK(data->points);
+
+        data->stroke_points_color = malloc(sizeof(DDRD_color) * (shape.parts_body_number + shape.legs_number));
 
     }else if(data->parts_num > 0)
     {
@@ -237,21 +317,23 @@ inline static void elementprocess(DDRD_shape shape, draw_data *data, DDRD_circui
         data->points_num = (int*)realloc(data->points_num,  
                                          sizeof(int) * (data->parts_num + shape.parts_body_number));
         ALLOC_CHECK(data->points_num);
-
         DDRD_print("points", 4, WHITE, false);
         data->points = (DDRD_pos**)realloc(data->points, 
                                            sizeof(DDRD_pos) * (data->parts_num + shape.parts_body_number));
+
+        data->stroke_points_color = realloc(data->stroke_points_color,
+                                            sizeof(DDRD_color) * (shape.parts_body_number + shape.legs_number + data->parts_num));
     }
     for (int i = 0; i < shape.parts_body_number; ++i)
     {
         data->points[i + data->parts_num] = (DDRD_pos*)malloc(sizeof(DDRD_pos) * shape.points_in_body_parts_number[i]);
     }
 
-
-    // proceeding points_num
+    // proceeding points_num and colors
     for (int i = 0; i < shape.parts_body_number; ++i)
     {
         data->points_num[i + data->parts_num] = shape.points_in_body_parts_number[i];
+        data->stroke_points_color[i + data->parts_num] = shape.color;
     }
 
     // proceeding points
@@ -302,6 +384,7 @@ inline static void elementprocess(DDRD_shape shape, draw_data *data, DDRD_circui
 
     for (int i = 0; i < shape.legs_number; ++i)
     {
+        data->stroke_points_color[data->parts_num + i] = shape.color;
         data->points[data->parts_num + i] = malloc(sizeof(DDRD_pos) * 2);
         ALLOC_CHECK(data->points_num);
 
@@ -337,9 +420,9 @@ draw_data DDRD_draw_data_process(DDRD_circuit *circuit, int width, int height) {
 
     draw_data data = {0};
     data.parts_num = 0;
-    data.stroke_color = (DDRD_color){255, 0, 0};
     data.fill_color = (DDRD_color){0, 0, 0};
     data.stroke_width = 2;
+
 
     // count parts in all elements
     int allocate_parts_num = 0;
@@ -367,7 +450,13 @@ draw_data DDRD_draw_data_process(DDRD_circuit *circuit, int width, int height) {
         elementprocess(elements[i]->shape, &data, circuit);
     }
 
-    gridDotsProcess(&data,circuit->view_zoom, width, height, circuit->view_position, circuit->excluded_dots, circuit->excluded_dots_num);
+
+    gridDotsProcess(&data,circuit->view_zoom, 
+                    width, 
+                    height, 
+                    circuit->view_position, 
+                    circuit->excluded_dots, 
+                    circuit->excluded_dots_num);
 
     return data;
 }
@@ -381,14 +470,16 @@ draw_data DDRD_draw_data_process(DDRD_circuit *circuit, int width, int height) {
  * The function DDRD_draw_data_process processes this structure
  * to prepare it for drawing, and is called within the draw_function.
  */
-void draw_function(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer data_for_drawing) {
+void draw_function(GtkDrawingArea *area, 
+                   cairo_t *cr, 
+                   int width, 
+                   int height, 
+                   gpointer data_for_drawing) {
 
     DDRD_print("Drawing", 0, GREEN, true);
 
-    CHECK_NULL(circuit_global);
-
-
     // make circuit pointer from global pointer
+    CHECK_NULL(circuit_global);
     DDRD_circuit* circuit = circuit_global;
 
     draw_data data = DDRD_draw_data_process(circuit, width, height);
@@ -417,8 +508,7 @@ void draw_function(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpo
     }
 
 
-    // set color and windh for lines
-    cairo_set_source_rgb(cr, 0, 0, 0.0);
+    // set windh for lines
     cairo_set_line_width(cr, 5);
 
     // move points appending to view position
@@ -436,9 +526,15 @@ void draw_function(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpo
     for (int i = 0; i < data.parts_num; ++i) // parts
     {
         DDRD_print("drawing part %d", 2, WHITE, i);
+        float r = (float)data.stroke_points_color[i].r / 255;
+        float g = (float)data.stroke_points_color[i].g / 255;
+        float b = (float)data.stroke_points_color[i].b / 255;
+
+        cairo_set_source_rgb(cr, r, g, b);
         for (int ii = 0; ii < data.points_num[i]; ++ii) // points
         {
-            DDRD_print("drawing point %d; values: %d %d;  ", 3, WHITE, ii, data.points[i][ii].x, data.points[i][ii].y);
+            DDRD_print("drawing point %d; values: %d %d;  ", 
+                       3, WHITE, ii, data.points[i][ii].x, data.points[i][ii].y);
 
             // if its first point in the part, cairo_move_to(), else cairo_line_to
             if (ii == 0) {
@@ -454,14 +550,23 @@ void draw_function(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpo
         DDRD_print("stroke", 1, GREEN, false);
     }
 
+    data.rectangles = NULL;
+    data.rectangles_colors = NULL;
+    data.rectangles_num = 0;
+
+
     // Free allocated memory for the points array and points_num array
     for (int i = 0; i < data.parts_num; i++) {
         free(data.points[i]);
     }
+    free(data.rectangles);
+    free(data.rectangles_colors);
     free(data.points);
     free(data.points_num);
     free(data.circles_positions);
     free(data.circles_radiuses);
+    free(data.stroke_points_color);
 
     DDRD_print("DRAWING COMPLETE", 0, BLUE, true);
+
 }

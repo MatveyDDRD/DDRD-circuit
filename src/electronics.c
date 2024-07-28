@@ -43,7 +43,10 @@ const DDRD_direction resistor_legs_directions[2] = {
 const DDRD_shape resistor_shape_default = {
     .parts_body_number = 1,
     .click_area = {
-        {-15, -10, 30, 20} 
+        {-50, -30},
+        {-50, 30},
+        {50, 30},
+        {50, -30}  
     },
 };
 
@@ -113,9 +116,9 @@ bool DDRD_resistor_new(DDRD_circuit *circuit, float resistance, DDRD_pos positio
     DDRD_element *self = (DDRD_element*)malloc(sizeof(DDRD_element));
     ALLOC_CHECK(self);
 
+    self->isSelected = false;
     self->position = position;
     self->position =  posToGrid(position, circuit->view_zoom);
-    DDRD_print("AAA %d %d", 0, RED, position.x);
     self->name = "resistor";
     self->type = DDRD_TYPE_RESISTOR;
     self->id = circuit->max_id;
@@ -124,10 +127,16 @@ bool DDRD_resistor_new(DDRD_circuit *circuit, float resistance, DDRD_pos positio
     DDRD_shape* shape = &self->shape;
     shape->parts_body_number = 1;
     shape->legs_number = 2;
-    shape->click_area[0] = (DDRD_pos){-10, -10};
-    shape->click_area[1] = (DDRD_pos){-10, 10};
-    shape->click_area[2] = (DDRD_pos){10, 10};
-    shape->click_area[3] = (DDRD_pos){10, -10};
+    DDRD_color color = (DDRD_color){0, 0, 0};
+
+
+    /*
+             2
+
+        1     
+     */
+    shape->click_area[0] = (DDRD_pos){-40, -10};
+    shape->click_area[1] = (DDRD_pos){40, 10};
 
     // Allocate memory for body parts and shape points
     shape->points_in_body_parts_number = (int*)malloc(sizeof(int) * 4);

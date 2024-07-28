@@ -28,9 +28,11 @@ gboolean workspace_press
 
 void workspace_release(GtkGesture *gesture, int n_press, double x, double y, gpointer user_draw_parts_data);
 
-inline extern DDRD_pos posToGrid(DDRD_pos pos, int view_zoom);
+inline extern DDRD_pos  posToGrid(DDRD_pos pos, int view_zoom);
 
 void draw_function(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_draw_parts_data);
+
+void elementSelect(DDRD_element *element, DDRD_circuit circuit);
 
 // draw_draw_parts_data DDRD_draw_draw_parts_data_process(DDRD_circuit *circuit);
 
