@@ -95,7 +95,16 @@ static struct {
     int last_drag_y;
 } mouse_data;
 
+#define ZOOM_FACTOR 0.001
 
+void on_scroll(GtkEventControllerScroll *controller, gdouble dx, gdouble dy, gpointer user_data) {
+    DDRD_circuit* circuit = circuit_global;
+    
+    double factor = ZOOM_FACTOR * (1 + circuit->view_zoom);
+    circuit->view_zoom += dy;
+    gtk_widget_queue_draw(circuit->drawing_area);
+    g_print("Scrolled: dx = %f, dy = %f\n", dx, dy);
+}
 
 // *** Mouse press callback ***
 gboolean workspace_press(GtkGesture *gesture, int n_press, double x, double y, gpointer user_data) {
@@ -210,66 +219,54 @@ inline extern DDRD_pos posToGrid(DDRD_pos pos, int view_zoom)
   return ret;
 }
 
-inline static void gridDotsProcess(draw_data *data, 
-                                   int zoom, 
-                                   int width, 
-                                   int height, 
-                                   DDRD_pos view_position, 
-                                   DDRD_pos *excluded_dots, 
-                                   int excluded_dots_num)
+inline static void gridDotsProcess(draw_data *data,
+                                    int zoom,
+                                    int width,
+                                    int height,
+                                    DDRD_pos view_position,
+                                    DDRD_pos *excluded_dots,
+                                    int excluded_dots_num)
 {
-    width += 60;
-    height += 60;
-    int num_dots_x = (width) / DOTS_DISTANCE;
-    int num_dots_y = (height) / DOTS_DISTANCE;
+
+    // *** Calculate the number of dots in each row and column ***
+    int num_dots_x = (width) / zoom + (width) % zoom;
+    int num_dots_y = (height) / zoom + (height) % zoom;
     int num_dots = num_dots_x * num_dots_y;
 
+    // *** Calculate the offset of the view position within the grid ***
     DDRD_pos local_view_pos;
-    local_view_pos.x = view_position.x % DOTS_DISTANCE;
-    local_view_pos.y = view_position.y % DOTS_DISTANCE;
+    local_view_pos.x = view_position.x % zoom;
+    local_view_pos.y = view_position.y % zoom;
 
+    // *** Allocate memory for dot positions and radiuses ***
     data->circles_positions = malloc(sizeof(DDRD_pos) * num_dots);
     data->circles_radiuses = malloc(sizeof(int) * num_dots);
     data->num_circles = num_dots;
     ALLOC_CHECK(data->circles_positions);
     ALLOC_CHECK(data->circles_radiuses);
 
-
+    // *** Initialize dot positions without offset ***
     DDRD_pos* circles = data->circles_positions;
 
-    for (int i = 0; i < num_dots_x; ++i)
-    {
-        for (int ii = 0; ii < num_dots_y; ++ii)
-        {
-            int index = i * num_dots_y + ii;
-            circles[index].x = i * DOTS_DISTANCE;
-            circles[index].y = ii * DOTS_DISTANCE;
+    int center_x = width / 2;
+    int center_y = height / 2;
+    for (int i = 0; i < num_dots_x; ++i) {
+      for (int ii = 0; ii < num_dots_y; ++ii) {
+        int index = i * num_dots_y + ii;
 
-            data->circles_radiuses[i] = 5;
-        }
-    }
-    for (int i = 0; i < num_dots_x; ++i)
-    {
-        for (int ii = 0; ii < num_dots_y; ++ii)
-        {
-            int index = i * num_dots_y + ii;
-            circles[index].x = i * DOTS_DISTANCE + local_view_pos.x;
-            circles[index].y = ii * DOTS_DISTANCE + local_view_pos.y;
-
-            if (circles[index].x < 0 || circles[index].x > width ||
-                circles[index].y < 0 || circles[index].y > height) {
-                data->circles_radiuses[index] = 0;
-            }
-            for (int iii = 0; iii < excluded_dots_num; ++iii)
-            {
-                if (excluded_dots[iii].x == circles[index].x && excluded_dots[iii].y == circles[index].y)
-                {
-                    data->circles_radiuses[index] = 0;
-                }
-            }
-        }
+        data->circles_radiuses[i] = 3;
+        
+        // Переместить начало координат в центр экрана
+        int x = i - num_dots_x / 2;
+        int y = ii - num_dots_y / 2;
+        
+        // Применить масштабирование
+        circles[index].x = (center_x + x * zoom) + local_view_pos.x;
+        circles[index].y = (center_y + y * zoom) + local_view_pos.y;
+      }
     }
 }
+
 
 inline static void pointOfLegProcess(DDRD_pos *point, DDRD_direction direction)
 {
@@ -418,6 +415,7 @@ draw_data DDRD_draw_data_process(DDRD_circuit *circuit, int width, int height) {
 
     DDRD_element **elements = circuit->elements;
 
+
     draw_data data = {0};
     data.parts_num = 0;
     data.fill_color = (DDRD_color){0, 0, 0};
@@ -509,15 +507,21 @@ void draw_function(GtkDrawingArea *area,
 
 
     // set windh for lines
-    cairo_set_line_width(cr, 5);
+    cairo_set_line_width(cr, 3);
 
     // move points appending to view position
     for (int i = 0; i < data.parts_num; ++i)
     {
+        // printf("draw %d\n", i);
         for (int ii = 0; ii < data.points_num[i]; ++ii)
         {
-            data.points[i][ii].x += circuit->view_position.x;
-            data.points[i][ii].y += circuit->view_position.y;
+            // Применить масштабирование и сдвиг
+            data.points[i][ii].x = (data.points[i][ii].x * (double)circuit->view_zoom / 30) + circuit->view_position.x;
+            data.points[i][ii].y = (data.points[i][ii].y * (double)circuit->view_zoom / 30) + circuit->view_position.y;
+
+            // Переместить начало координат в центр экрана
+            data.points[i][ii].x += width / 2;
+            data.points[i][ii].y += height / 2;
         }
     }
 
@@ -535,6 +539,7 @@ void draw_function(GtkDrawingArea *area,
         {
             DDRD_print("drawing point %d; values: %d %d;  ", 
                        3, WHITE, ii, data.points[i][ii].x, data.points[i][ii].y);
+
 
             // if its first point in the part, cairo_move_to(), else cairo_line_to
             if (ii == 0) {

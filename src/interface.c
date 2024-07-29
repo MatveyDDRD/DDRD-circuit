@@ -226,18 +226,6 @@ void make_file_tree() {
 }
 
 
-// *** Application activation function **
-void activate(GtkApplication *app, gpointer user_draw_parts_data) {
-    printf("Activating application...\n");
-
-    // *** Main window ***
-    GtkWidget *window = gtk_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(window), "Window");
-    gtk_window_set_default_size(GTK_WINDOW(window), 800, 400);
-
-    GtkWidget *main_vertical_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-
-
 
 
     // *** Menu Bar ***
@@ -252,6 +240,21 @@ void activate(GtkApplication *app, gpointer user_draw_parts_data) {
     //     └── Server
     //         ├── Connect
     //         └── Disconnect
+
+// *** Application activation function **
+void activate(GtkApplication *app, gpointer user_draw_parts_data) {
+    printf("Activating application...\n");
+
+    // *** Main window ***
+    GtkWidget *window = gtk_application_window_new(app);
+    gtk_window_set_title(GTK_WINDOW(window), "Window");
+    gtk_window_set_default_size(GTK_WINDOW(window), 800, 400);
+
+    GtkWidget *main_vertical_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+
+
+
 
     // Создаем главное меню
     GMenu *menu_bar = g_menu_new();
@@ -455,7 +458,14 @@ void activate(GtkApplication *app, gpointer user_draw_parts_data) {
     g_signal_connect (drag_gesture, "drag-update", G_CALLBACK (on_drag_update), NULL);
     gtk_widget_add_controller (workspace_area, GTK_EVENT_CONTROLLER (drag_gesture));
 
-    // Show all
+    // scroll
+    GtkEventController *scroll_controller = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+    g_signal_connect(scroll_controller, "scroll", G_CALLBACK(on_scroll), NULL);
+    gtk_widget_add_controller(workspace_area, scroll_controller);
+
+
+
+    // *** Show all ***
     gtk_window_set_child(GTK_WINDOW(window), main_vertical_box);
     gtk_window_present(GTK_WINDOW(window));
 }

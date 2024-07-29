@@ -34,6 +34,8 @@ void draw_function(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpo
 
 void elementSelect(DDRD_element *element, DDRD_circuit circuit);
 
+void on_scroll(GtkEventControllerScroll *controller, gdouble dx, gdouble dy, gpointer user_data);
+
 // draw_draw_parts_data DDRD_draw_draw_parts_data_process(DDRD_circuit *circuit);
 
 #endif
