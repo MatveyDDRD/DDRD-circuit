@@ -1,3 +1,5 @@
+[![wakatime](https://wakatime.com/badge/github/MatveyDDRD/DDRD-circuit.svg)](https://wakatime.com/badge/github/MatveyDDRD/DDRD-circuit?style=plastic)
+
 # This is a program for creating, editing and running electronic circuits
 
 ## How to compile
